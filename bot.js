@@ -24,11 +24,9 @@ const SERVER_ID = process.env.SERVER_ID;
 const CATEGORY_ID = '1545817704127266876';
 const WELCOME_CHANNEL_ID = '1545861068117774349';
 const ACCESS_CODE = process.env.ACCESS_CODE || 'loco_mp3!';
-const VERIFIED_ROLE_ID = '1545864778742763601'; // Το role που έχει πρόσβαση
+const VERIFIED_ROLE_ID = '1545864778742763601';
 
-// Αποθήκευση των χρηστών που έχουν πρόσβαση
 const accessUsers = new Set();
-
 const messageCache = new Map();
 
 // ---------- ΕΚΚΙΝΗΣΗ BOT ----------
@@ -55,7 +53,6 @@ client.once('ready', () => {
             console.error(`❌ Δεν βρέθηκε welcome κανάλι με ID: ${WELCOME_CHANNEL_ID}`);
         }
         
-        // Έλεγχος αν υπάρχει το role
         const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
         if (role) {
             console.log(`✅ Βρέθηκε το role: ${role.name}`);
@@ -67,7 +64,7 @@ client.once('ready', () => {
     }
 });
 
-// ---------- WELCOME SYSTEM (ΑΥΤΟΜΑΤΟ) ----------
+// ---------- WELCOME SYSTEM ----------
 client.on('guildMemberAdd', async (member) => {
     console.log(`👤 Νέο μέλος στον server: ${member.user.tag} (${member.id})`);
     
@@ -84,7 +81,6 @@ client.on('guildMemberAdd', async (member) => {
             return;
         }
 
-        // Δημιουργία κουμπιού Access
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -93,7 +89,6 @@ client.on('guildMemberAdd', async (member) => {
                     .setStyle(ButtonStyle.Primary)
             );
 
-        // Δημιουργία embed
         const embed = new EmbedBuilder()
             .setColor(0x00ff88)
             .setTitle('👋 ΚΑΛΩΣ ΗΡΘΕΣ!')
@@ -111,7 +106,6 @@ client.on('guildMemberAdd', async (member) => {
                 iconURL: 'https://cdn.discordapp.com/emojis/1085933512993218630.png'
             });
 
-        // Αποστολή στο welcome κανάλι
         await welcomeChannel.send({ 
             embeds: [embed],
             components: [row]
@@ -123,18 +117,15 @@ client.on('guildMemberAdd', async (member) => {
     }
 });
 
-// ---------- INTERACTION HANDLER (Button & Modal) ----------
+// ---------- INTERACTION HANDLER ----------
 client.on('interactionCreate', async (interaction) => {
-    // Χειρισμός κουμπιού Access
     if (interaction.isButton() && interaction.customId === 'access_button') {
         console.log(`🔑 Ο ${interaction.user.tag} πάτησε το κουμπί Access`);
 
-        // Δημιουργία Modal για τον κωδικό
         const modal = new ModalBuilder()
             .setCustomId('access_modal')
             .setTitle('🔑 Πρόσβαση στα Καναλιά');
 
-        // Δημιουργία input για τον κωδικό - ΜΥΣΤΙΚΟ
         const codeInput = new TextInputBuilder()
             .setCustomId('access_code_input')
             .setLabel('Εισάγετε τον κωδικό πρόσβασης')
@@ -150,13 +141,11 @@ client.on('interactionCreate', async (interaction) => {
         await interaction.showModal(modal);
     }
 
-    // Χειρισμός Modal (υποβολή κωδικού)
     if (interaction.isModalSubmit() && interaction.customId === 'access_modal') {
         const code = interaction.fields.getTextInputValue('access_code_input');
         console.log(`🔑 Ο ${interaction.user.tag} υπέβαλε κωδικό`);
 
         if (code === ACCESS_CODE) {
-            // Σωστός κωδικός - Δίνουμε πρόσβαση
             accessUsers.add(interaction.user.id);
             console.log(`✅ Ο ${interaction.user.tag} πήρε πρόσβαση!`);
 
@@ -168,8 +157,12 @@ client.on('interactionCreate', async (interaction) => {
                         // 1. Δίνουμε το verified role
                         const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
                         if (role) {
-                            await member.roles.add(role);
-                            console.log(`✅ Δόθηκε το role ${role.name} στον ${interaction.user.tag}`);
+                            try {
+                                await member.roles.add(role);
+                                console.log(`✅ Δόθηκε το role ${role.name} στον ${interaction.user.tag}`);
+                            } catch (roleError) {
+                                console.error('❌ Δεν μπόρεσα να δώσω το role:', roleError.message);
+                            }
                         } else {
                             console.error(`❌ Δεν βρέθηκε το role με ID: ${VERIFIED_ROLE_ID}`);
                         }
@@ -177,17 +170,21 @@ client.on('interactionCreate', async (interaction) => {
                         // 2. Δίνουμε permission να βλέπει την κατηγορία
                         const category = guild.channels.cache.get(CATEGORY_ID);
                         if (category) {
-                            await category.permissionOverwrites.edit(member, {
-                                ViewChannel: true,
-                                ReadMessageHistory: true
-                            });
-                            console.log(`✅ Δόθηκαν permissions στον ${interaction.user.tag} για την κατηγορία`);
+                            try {
+                                await category.permissionOverwrites.edit(member, {
+                                    ViewChannel: true,
+                                    ReadMessageHistory: true
+                                });
+                                console.log(`✅ Δόθηκαν permissions στον ${interaction.user.tag} για την κατηγορία`);
+                            } catch (permError) {
+                                console.error('❌ Δεν μπόρεσα να δώσω permissions στην κατηγορία:', permError.message);
+                            }
                         }
 
                         // 3. Απάντηση επιτυχίας
                         await interaction.reply({
                             content: '✅ **Πρόσβαση παραχωρήθηκε!** Μπορείς τώρα να δεις τα κανάλια των χρηστών. 🔓',
-                            ephemeral: true
+                            flags: 64 // ephemeral
                         });
                     }
                 }
@@ -195,15 +192,14 @@ client.on('interactionCreate', async (interaction) => {
                 console.error('❌ Σφάλμα κατά το permission:', permError);
                 await interaction.reply({
                     content: '⚠️ Σφάλμα κατά την παραχώρηση πρόσβασης. Παρακαλώ ενημέρωσε τον διαχειριστή.',
-                    ephemeral: true
+                    flags: 64 // ephemeral
                 });
             }
 
         } else {
-            // Λάθος κωδικός
             await interaction.reply({
                 content: '❌ **Λάθος κωδικός!** Δοκίμασε ξανά. Η πρόσβαση δεν δόθηκε.',
-                ephemeral: true
+                flags: 64 // ephemeral
             });
             console.log(`❌ Ο ${interaction.user.tag} έβαλε λάθος κωδικό`);
         }
@@ -373,7 +369,6 @@ app.post('/', async (req, res) => {
             return res.status(500).json({ success: false, error: 'Category not found' });
         }
         
-        // Βρίσκουμε το role
         const verifiedRole = guild.roles.cache.get(VERIFIED_ROLE_ID);
         if (!verifiedRole) {
             console.error(`❌ Δεν βρέθηκε το role με ID: ${VERIFIED_ROLE_ID}`);
@@ -398,14 +393,14 @@ app.post('/', async (req, res) => {
                 reason: `Κανάλι για τον χρήστη ${name}`,
                 permissionOverwrites: [
                     {
-                        id: guild.id, // @everyone - ΔΕΝ ΒΛΕΠΕΙ ΤΙΠΟΤΑ
+                        id: guild.id,
                         deny: [
                             PermissionsBitField.Flags.ViewChannel,
                             PermissionsBitField.Flags.ReadMessageHistory
                         ]
                     },
                     {
-                        id: verifiedRole.id, // ΜΟΝΟ το verified role βλέπει
+                        id: verifiedRole.id,
                         allow: [
                             PermissionsBitField.Flags.ViewChannel,
                             PermissionsBitField.Flags.ReadMessageHistory
@@ -420,7 +415,7 @@ app.post('/', async (req, res) => {
                     }
                 ]
             });
-            console.log(`✅ Δημιουργήθηκε το κανάλι: ${channel.name} (μόνο το role ${verifiedRole.name} βλέπει)`);
+            console.log(`✅ Δημιουργήθηκε το κανάλι: ${channel.name}`);
         } else {
             console.log(`✅ Βρέθηκε υπάρχον κανάλι: ${channel.name}`);
         }
