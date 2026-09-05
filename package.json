@@ -1,12 +1,18 @@
 {
-  "name": "discord-tracker-bot",
+  "name": "discord-bot",
   "version": "1.0.0",
+  "description": "Bot που λαμβάνει δεδομένα από site και τα στέλνει σε Discord κανάλι",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "dev": "nodemon bot.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
