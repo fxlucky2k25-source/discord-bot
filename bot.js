@@ -20,7 +20,7 @@ const client = new Client({
 
 const TOKEN = process.env.BOT_TOKEN;
 const SERVER_ID = process.env.SERVER_ID;
-const CATEGORY_ID = '1545817704127266876';
+const CATEGORY_ID = '1545876646144508054';
 
 const messageCache = new Map();
 
