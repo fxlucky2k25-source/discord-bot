@@ -1,11 +1,14 @@
 const { Client, GatewayIntentBits } = require('discord.js');
+const express = require('express');
+
+const app = express();
+app.use(express.json());
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.MessageContent
     ]
 });
 
@@ -16,29 +19,52 @@ client.on('ready', () => {
     console.log(`✅ Bot είναι online: ${client.user.tag}`);
 });
 
-// Εδώ θα μπαίνει ο κώδικας για τα κανάλια
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+// Δέχεται POST από την HTML σελίδα
+app.post('/', async (req, res) => {
+    const { name, data } = req.body;
     
-    // Αν το μήνυμα έρχεται από την HTML σελίδα
-    if (message.content.startsWith('!track')) {
-        const args = message.content.split('|');
-        const userName = args[1] || 'Unknown';
-        const data = args[2] || '';
-        
-        // Βρες ή δημιούργησε κανάλι
+    try {
         const guild = client.guilds.cache.get(SERVER_ID);
-        let channel = guild.channels.cache.find(c => c.name === `👤-${userName.toLowerCase()}`);
+        
+        if (!guild) {
+            return res.json({ success: false, error: 'Server not found' });
+        }
+        
+        const cleanName = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        
+        let channel = guild.channels.cache.find(
+            c => c.name === `👤-${cleanName}`
+        );
         
         if (!channel) {
             channel = await guild.channels.create({
-                name: `👤-${userName.toLowerCase()}`,
+                name: `👤-${cleanName}`,
                 type: 0
             });
+            console.log(`✅ Νέο κανάλι: ${channel.name}`);
         }
         
         await channel.send(data);
+        console.log(`📤 Στάλθηκε στο: ${channel.name}`);
+        
+        res.json({ success: true });
+        
+    } catch (error) {
+        console.error('Σφάλμα:', error);
+        res.json({ success: false, error: error.message });
     }
+});
+
+// Health check - ΣΗΜΑΝΤΙΚΟ!
+app.get('/', (req, res) => {
+    res.json({ status: 'online', bot: 'ready' });
+});
+
+// ΑΝΟΙΓΕΙ ΤΗΝ ΠΟΡΤΑ ΕΔΩ!
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 API τρέχει στη πόρτα: ${PORT}`);
 });
 
 client.login(TOKEN);
