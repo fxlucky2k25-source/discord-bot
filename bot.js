@@ -1,9 +1,16 @@
-const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
+const cors = require('cors');
 
+// ---------- ΡΥΘΜΙΣΕΙΣ ----------
 const app = express();
-app.use(express.json());
+const PORT = process.env.PORT || 3000;
 
+// CORS - επιτρέπει σε οποιοδήποτε site να στέλνει δεδομένα
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// ---------- BOT ----------
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -12,71 +19,114 @@ const client = new Client({
     ]
 });
 
+// ΤΑΥΤΟΤΗΤΕΣ - ΠΡΟΣΟΧΗ: Βάλε τις σωστές τιμές!
 const TOKEN = process.env.BOT_TOKEN;
 const SERVER_ID = process.env.SERVER_ID;
-const CHANNEL_ID = '1545817704127266879'; // Το ID του καναλιού που θες
+const CHANNEL_ID = '1545817704127266879'; // Το κανάλι όπου θα στέλνονται τα μηνύματα
 
-client.on('ready', () => {
-    console.log(`✅ Bot είναι online: ${client.user.tag}`);
-    console.log(`Server ID: ${SERVER_ID}`);
-    console.log(`📢 Θα στέλνω σε κανάλι με ID: ${CHANNEL_ID}`);
+// ---------- ΕΚΚΙΝΗΣΗ BOT ----------
+client.once('ready', () => {
+    console.log(`✅ Bot online: ${client.user.tag}`);
+    console.log(`📢 Θα στέλνω σε κανάλι ID: ${CHANNEL_ID}`);
+    
+    // Έλεγχος αν το κανάλι υπάρχει
+    const guild = client.guilds.cache.get(SERVER_ID);
+    if (guild) {
+        const channel = guild.channels.cache.get(CHANNEL_ID);
+        if (channel) {
+            console.log(`✅ Βρέθηκε το κανάλι: #${channel.name}`);
+        } else {
+            console.error(`❌ ΠΡΟΣΟΧΗ: Δεν βρέθηκε κανάλι με ID: ${CHANNEL_ID}`);
+            console.log(`💡 Διαθέσιμα κανάλια: ${guild.channels.cache.map(c => `${c.name} (${c.id})`).join(', ')}`);
+        }
+    } else {
+        console.error(`❌ ΠΡΟΣΟΧΗ: Δεν βρέθηκε server με ID: ${SERVER_ID}`);
+    }
 });
 
-// Δέχεται POST από την HTML σελίδα
+// ---------- ENDPOINTS ----------
+// Κύριος endpoint - δέχεται τα δεδομένα από το site
 app.post('/', async (req, res) => {
-    console.log('📥 Έλαβα request!');
-    console.log('Body:', req.body);
+    console.log('\n📥 ΝΕΟ ΑΙΤΗΜΑ!');
+    console.log('📦 Λήφθηκαν δεδομένα:', JSON.stringify(req.body, null, 2));
     
     const { name, data } = req.body;
     
+    // Έλεγχος αν υπάρχουν τα απαραίτητα πεδία
     if (!name || !data) {
-        console.error('❌ Λείπουν δεδομένα!');
-        return res.json({ success: false, error: 'Missing data' });
+        console.error('❌ Λείπουν δεδομένα (name ή data)');
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Missing name or data',
+            received: req.body 
+        });
     }
     
     try {
+        // Βρίσκουμε τον server
         const guild = client.guilds.cache.get(SERVER_ID);
-        
         if (!guild) {
-            console.error('❌ Δεν βρέθηκε ο server!');
-            return res.json({ success: false, error: 'Server not found' });
+            console.error(`❌ Server με ID ${SERVER_ID} δεν βρέθηκε`);
+            return res.status(500).json({ success: false, error: 'Server not found' });
         }
         
-        // Βρίσκουμε το κανάλι με το συγκεκριμένο ID
+        // Βρίσκουμε το κανάλι
         const channel = guild.channels.cache.get(CHANNEL_ID);
-        
         if (!channel) {
-            console.error(`❌ Δεν βρέθηκε κανάλι με ID: ${CHANNEL_ID}`);
-            return res.json({ success: false, error: 'Channel not found' });
+            console.error(`❌ Κανάλι με ID ${CHANNEL_ID} δεν βρέθηκε`);
+            return res.status(500).json({ success: false, error: 'Channel not found' });
         }
         
-        console.log(`✅ Βρέθηκε κανάλι: ${channel.name}`);
+        console.log(`✅ Στέλνω στο κανάλι: #${channel.name}`);
         
-        // Στέλνουμε τα δεδομένα
+        // Στέλνουμε το μήνυμα
         await channel.send(data);
-        console.log(`📤 Στάλθηκε στο: ${channel.name}`);
+        console.log(`📤 ΕΠΙΤΥΧΙΑ! Το μήνυμα στάλθηκε στο #${channel.name}`);
         
-        res.json({ success: true, channel: channel.name });
+        res.json({ 
+            success: true, 
+            channel: channel.name,
+            message: 'Data sent successfully'
+        });
         
     } catch (error) {
-        console.error('❌ Σφάλμα:', error);
-        res.json({ success: false, error: error.message });
+        console.error('❌ Σφάλμα κατά την αποστολή:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            stack: error.stack 
+        });
     }
 });
 
-// Health check
+// Endpoint για έλεγχο υγείας
 app.get('/', (req, res) => {
-    res.json({ 
-        status: 'online', 
+    res.json({
+        status: 'online',
         bot: client.user?.tag || 'not ready',
-        server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected'
+        server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
+        channel: CHANNEL_ID
     });
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🌐 API τρέχει στη πόρτα: ${PORT}`);
+// Test endpoint - δοκιμαστικό αίτημα
+app.get('/test', (req, res) => {
+    res.json({
+        message: '✅ Το bot λειτουργεί!',
+        bot: client.user?.tag || 'not ready',
+        server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
+        channel: CHANNEL_ID,
+        instructions: 'Στείλε POST request στο / με { name, data }'
+    });
 });
 
-client.login(TOKEN);
+// ---------- ΕΚΚΙΝΗΣΗ ----------
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🌐 Server τρέχει στη θύρα: ${PORT}`);
+    console.log(`🔗 Δοκίμασε το test endpoint: https://discord-bot-kvbn.onrender.com/test`);
+});
+
+// Σύνδεση του bot
+client.login(TOKEN).catch(err => {
+    console.error('❌ Σφάλμα σύνδεσης bot:', err);
+});
