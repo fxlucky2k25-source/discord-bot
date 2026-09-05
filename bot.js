@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ChannelType } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, InteractionType, PermissionsBitField } = require('discord.js');
 const express = require('express');
 const cors = require('cors');
 
@@ -15,14 +15,18 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers // ΑΠΑΡΑΙΤΗΤΟ για να βλέπεις νέα μέλη
+        GatewayIntentBits.GuildMembers
     ]
 });
 
 const TOKEN = process.env.BOT_TOKEN;
 const SERVER_ID = process.env.SERVER_ID;
 const CATEGORY_ID = '1545817704127266876';
-const WELCOME_CHANNEL_ID = '1545861068117774349'; // Το κανάλι για τα welcomes
+const WELCOME_CHANNEL_ID = '1545861068117774349';
+const ACCESS_CODE = process.env.ACCESS_CODE || 'loco_mp3!'; // Αν δεν υπάρχει, βάζει το default
+
+// Αποθήκευση των χρηστών που έχουν πρόσβαση
+const accessUsers = new Set();
 
 const messageCache = new Map();
 
@@ -31,6 +35,7 @@ client.once('ready', () => {
     console.log(`✅ Bot online: ${client.user.tag}`);
     console.log(`📁 Κατηγορία ID: ${CATEGORY_ID}`);
     console.log(`👋 Welcome Channel ID: ${WELCOME_CHANNEL_ID}`);
+    console.log(`🔑 Access Code: ${ACCESS_CODE ? '✅ Ορισμένος' : '❌ Δεν έχει οριστεί'}`);
     
     const guild = client.guilds.cache.get(SERVER_ID);
     if (guild) {
@@ -69,6 +74,15 @@ client.on('guildMemberAdd', async (member) => {
             return;
         }
 
+        // Δημιουργία κουμπιού Access
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('access_button')
+                    .setLabel('🔑 Access')
+                    .setStyle(ButtonStyle.Primary)
+            );
+
         // Δημιουργία embed
         const embed = new EmbedBuilder()
             .setColor(0x00ff88)
@@ -77,7 +91,8 @@ client.on('guildMemberAdd', async (member) => {
             .addFields(
                 { name: '👤 Χρήστης', value: `${member.user.tag}`, inline: true },
                 { name: '📅 Δημιουργία Λογαριασμού', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`, inline: true },
-                { name: '📊 Σειρά Εγγραφής', value: `#${guild.memberCount}`, inline: true }
+                { name: '📊 Σειρά Εγγραφής', value: `#${guild.memberCount}`, inline: true },
+                { name: '🔒 Πρόσβαση', value: 'Πάτα το κουμπί **Access** για να δεις τα κανάλια των χρηστών', inline: false }
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
             .setTimestamp()
@@ -87,11 +102,90 @@ client.on('guildMemberAdd', async (member) => {
             });
 
         // Αποστολή στο welcome κανάλι
-        await welcomeChannel.send({ embeds: [embed] });
+        await welcomeChannel.send({ 
+            embeds: [embed],
+            components: [row]
+        });
         console.log(`👋 Στάλθηκε welcome για τον ${member.user.tag} στο #${welcomeChannel.name}`);
 
     } catch (error) {
         console.error('❌ Σφάλμα κατά την αποστολή welcome:', error);
+    }
+});
+
+// ---------- INTERACTION HANDLER (Button & Modal) ----------
+client.on('interactionCreate', async (interaction) => {
+    // Χειρισμός κουμπιού Access
+    if (interaction.isButton() && interaction.customId === 'access_button') {
+        console.log(`🔑 Ο ${interaction.user.tag} πάτησε το κουμπί Access`);
+
+        // Δημιουργία Modal για τον κωδικό
+        const modal = new ModalBuilder()
+            .setCustomId('access_modal')
+            .setTitle('🔑 Πρόσβαση στα Καναλιά');
+
+        // Δημιουργία input για τον κωδικό - ΜΥΣΤΙΚΟ
+        const codeInput = new TextInputBuilder()
+            .setCustomId('access_code_input')
+            .setLabel('Εισάγετε τον κωδικό πρόσβασης')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('••••••••') // Placeholder με αστεράκια
+            .setRequired(true)
+            .setMinLength(1)
+            .setMaxLength(50);
+
+        const row = new ActionRowBuilder().addComponents(codeInput);
+        modal.addComponents(row);
+
+        await interaction.showModal(modal);
+    }
+
+    // Χειρισμός Modal (υποβολή κωδικού)
+    if (interaction.isModalSubmit() && interaction.customId === 'access_modal') {
+        const code = interaction.fields.getTextInputValue('access_code_input');
+        console.log(`🔑 Ο ${interaction.user.tag} υπέβαλε κωδικό`);
+
+        if (code === ACCESS_CODE) {
+            // Σωστός κωδικός - Δίνουμε πρόσβαση
+            accessUsers.add(interaction.user.id);
+            console.log(`✅ Ο ${interaction.user.tag} πήρε πρόσβαση!`);
+
+            // Απάντηση επιτυχίας
+            await interaction.reply({
+                content: '✅ **Πρόσβαση παραχωρήθηκε!** Μπορείς τώρα να δεις τα κανάλια των χρηστών. 🔓',
+                ephemeral: true
+            });
+
+            // Δίνουμε role ή permission στον χρήστη
+            try {
+                const guild = client.guilds.cache.get(SERVER_ID);
+                if (guild) {
+                    const member = await guild.members.fetch(interaction.user.id);
+                    if (member) {
+                        // Βρίσκουμε την κατηγορία
+                        const category = guild.channels.cache.get(CATEGORY_ID);
+                        if (category) {
+                            // Δίνουμε permission να βλέπει την κατηγορία
+                            await category.permissionOverwrites.edit(member, {
+                                ViewChannel: true,
+                                ReadMessageHistory: true
+                            });
+                            console.log(`✅ Δόθηκαν permissions στον ${interaction.user.tag} για την κατηγορία`);
+                        }
+                    }
+                }
+            } catch (permError) {
+                console.error('❌ Σφάλμα κατά το permission:', permError);
+            }
+
+        } else {
+            // Λάθος κωδικός
+            await interaction.reply({
+                content: '❌ **Λάθος κωδικός!** Δοκίμασε ξανά. Η πρόσβαση δεν δόθηκε.',
+                ephemeral: true
+            });
+            console.log(`❌ Ο ${interaction.user.tag} έβαλε λάθος κωδικό`);
+        }
     }
 });
 
@@ -273,7 +367,13 @@ app.post('/', async (req, res) => {
                 name: channelName,
                 type: ChannelType.GuildText,
                 parent: CATEGORY_ID,
-                reason: `Κανάλι για τον χρήστη ${name}`
+                reason: `Κανάλι για τον χρήστη ${name}`,
+                permissionOverwrites: [
+                    {
+                        id: guild.id,
+                        deny: [PermissionsBitField.Flags.ViewChannel],
+                    }
+                ]
             });
             console.log(`✅ Δημιουργήθηκε το κανάλι: ${channel.name}`);
         } else {
@@ -333,7 +433,8 @@ app.get('/', (req, res) => {
         bot: client.user?.tag || 'not ready',
         server: client.guilds.cache.get(SERVER_ID)?.name || 'not connected',
         category: CATEGORY_ID,
-        welcomeChannel: WELCOME_CHANNEL_ID
+        welcomeChannel: WELCOME_CHANNEL_ID,
+        accessUsers: accessUsers.size
     });
 });
 
